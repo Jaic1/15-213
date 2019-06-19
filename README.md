@@ -1,2 +1,3 @@
 # 15-213
-homework for cmu 15-213 course
+[course website](https://www.cs.cmu.edu/~213/)  
+[csapp student site](http://csapp.cs.cmu.edu/3e/students.html)
