@@ -27,7 +27,7 @@ int main(int argc, char **argv)
        sleep(1);
 	
     pid = getpid(); 
-
+    // printf("./mystop send pid: %d\n", pid);     // debug
     if (kill(-pid, SIGTSTP) < 0)
        fprintf(stderr, "kill (tstp) error");
 

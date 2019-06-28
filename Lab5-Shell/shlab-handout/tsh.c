@@ -6,6 +6,10 @@
  * contact: 506933131@qq.com
  * 
  * Challenge 1: test05, in sigchld_handler
+ * Challenge 2: process group
+ * Challenge 3: test16, ./mystop 2 and ./myint 2, read book about SIGCHLD and SIGTSTP&SIGINT
+ * Challenge 4: relation between SIGINT and SIGCHLD in test07 after finishing test16
+ *              reason -- execve doesn't inherit self-registerd signal handler 
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,6 +20,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <errno.h>
+#include <limits.h>
 
 /* Misc manifest constants */
 #define MAXLINE 1024   /* max line size */
@@ -196,7 +201,7 @@ void eval(char *cmdline)
         if (pid == 0)
         {
             sigprocmask(SIG_SETMASK, &prev, NULL);
-            setpgid(0, 0);  // important, read Hints in shlab.pdf
+            setpgid(0, 0); // Challenge 2: important, read Hints in shlab.pdf
             if (execve(argv[0], argv, NULL) < 0)
             {
                 printf("%s: Command not found\n", argv[0]);
@@ -282,6 +287,7 @@ int parseline(const char *cmdline, char **argv)
 }
 
 /* 
+    if (JID)
  * builtin_cmd - If the user has typed a built-in command then execute
  *    it immediately.  
  */
@@ -303,10 +309,69 @@ int builtin_cmd(char **argv)
 
 /* 
  * do_bgfg - Execute the builtin bg and fg commands
+ * only implement the simplest version
+ * check bg or fg and %jid
  */
 void do_bgfg(char **argv)
 {
-    return;
+    if (argv[1] == NULL)
+    {
+        printf("%s command requires PID or %%jobid argument\n", argv[0]);
+        return;
+    }
+
+    // check bg or fg arguments
+    int JID = (argv[1][0] == '%');
+    int id = 0;
+    long int tmp;
+
+    tmp = strtol(argv[1] + JID, NULL, 10);
+    if (!tmp)
+    {
+        printf("%s: argument must be a PID or %%jobid\n", argv[0]);
+        return;
+    }
+    if (tmp > INT_MAX)
+    {
+        printf("%s: argument PID or %%jobid greater than %d\n", argv[0], INT_MAX);
+        return;
+    }
+    id = (int)tmp;
+
+    sigset_t mask_all, prev_all;
+    sigfillset(&mask_all);
+    sigprocmask(SIG_BLOCK, &mask_all, &prev_all);
+    struct job_t *job = JID ? getjobjid(jobs, id) : getjobpid(jobs, id);
+    if (!job)
+    {
+        if (JID)
+            printf("%s: No such job\n", argv[1]);
+        else
+            printf("(%s): No such process\n", argv[1]);
+        sigprocmask(SIG_SETMASK, &prev_all, NULL);
+        return;
+    }
+
+    if (strcmp(argv[0], "bg") == 0)
+    {
+        printf("[%d] (%d) %s", job->jid, job->pid, job->cmdline);
+        job->state = BG;
+        kill(-job->pid, SIGCONT);
+        sigprocmask(SIG_SETMASK, &prev_all, NULL);
+    }
+
+    if (strcmp(argv[0], "fg") == 0)
+    {
+        job->state = FG;
+        int pid = job->pid;
+        /* Challenge 2: send SIGCONT to a specific process group instead of a single process
+         * otherwise see test13 and mysplit
+         * in which case the child of fg process doesn't receive SIGCONT
+         */
+        kill(-job->pid, SIGCONT);
+        sigprocmask(SIG_SETMASK, &prev_all, NULL);
+        waitfg(pid);
+    }
 }
 
 /* 
@@ -314,10 +379,11 @@ void do_bgfg(char **argv)
  */
 void waitfg(pid_t pid)
 {
-    // TODO
-    while(pid == fgpid(jobs))
+    while (pid == fgpid(jobs))
         sleep(1);
-    return;
+
+    if (verbose)
+        printf("waitfg: Process (%d) no longer the fg process\n", pid);
 }
 
 /*****************
@@ -333,11 +399,15 @@ void waitfg(pid_t pid)
  */
 void sigchld_handler(int sig)
 {
+    if (verbose)
+        printf("sigchld_handler(%d): entering\n", getpid());
+
     int olderrno = errno;
     sigset_t mask_all, prev_all;
     pid_t pid;
+    int status;
 
-    /* Challenge 1: specify WNOHANG | WUNTRACED
+    /* Challenge 1: specify WNOHANG | WUNTRACED (no WUNTRACED actually)
      * otherwise with 0, 
      * waitpid will by default always wait for running child process, if no child process already terminate
      * 
@@ -347,16 +417,61 @@ void sigchld_handler(int sig)
      * interrupting parent process after fork ./myspin 3 & and before printing the relevant info
      * this instance will wait until ./myspin 3 & terminates and reap it
      * then bad result occurs: jobs command lists nothing
-     */ 
+     */
+
+    /* Challenge 3: handle SIGTSTP from other process instead of the terminal
+     * see test16 and ./mystop 2
+     * ./mystop 2 instance send SIGTSTP to itself
+     * it seems ./mystop 2 instance doesn't trig its SIGTSTP handler,
+     * but trig its parent process's SIGCHLD handler, which is here
+     * P.S. usage of WSTOPSIG and WTERMSIG
+     */
     sigfillset(&mask_all);
-    while ((pid = waitpid(-1, NULL, WNOHANG | WUNTRACED)) > 0)
+    while ((pid = waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0)
     {
+        int jid;
+        struct job_t *job;
+
         sigprocmask(SIG_BLOCK, &mask_all, &prev_all);
-        deletejob(jobs, pid);
-        // printf("job (%d) deleted\n", pid);  // debug
+        jid = pid2jid(pid);
+        job = getjobpid(jobs, pid);
+
+        if (WIFEXITED(status))
+        {
+            int deleted = deletejob(jobs, pid);
+            if (verbose)
+            {
+                if (deleted)
+                {
+                    printf("sigchld_handler: Job [%d] (%d) deleted\n", jid, pid);
+                    printf("sigchld_handler: Job [%d] (%d) terminates %s (status %d)\n",
+                           jid, pid, WEXITSTATUS(status) ? "abnormally" : "OK", status);
+                }
+                else
+                {
+                    printf("sigchld_handler: Job [%d] (%d) not deleted\n", jid, pid);
+                }
+            }
+        }
+
+        if (WIFSIGNALED(status))
+        {
+            deletejob(jobs, pid);
+            printf("Job [%d] (%d) terminated by signal %d\n", jid, pid, WTERMSIG(status));
+        }
+
+        if (WIFSTOPPED(status))
+        {
+            job->state = ST;
+            printf("Job [%d] (%d) stopped by signal %d\n", job->jid, job->pid, WSTOPSIG(status));
+        }
+
         sigprocmask(SIG_SETMASK, &prev_all, NULL);
     }
     errno = olderrno;
+
+    if (verbose)
+        printf("sigchld_handler: exiting\n");
 }
 
 /* 
@@ -366,14 +481,51 @@ void sigchld_handler(int sig)
  */
 void sigint_handler(int sig)
 {
-    // TODO
-    // read hints about args in kill (-pid vs pid)
+    // commented by challenge 4
+    // if (verbose)
+    //     printf("sigint_handler: entering\n");
+
+    // int olderrno = errno;
+    // sigset_t mask_all, prev_all;
+    // sigfillset(&mask_all);
+    // sigprocmask(SIG_BLOCK, &mask_all, &prev_all);
+    // pid_t pid = fgpid(jobs);
+    // if (pid)
+    // {
+    //     int jid = pid2jid(pid);
+    //     // Chanllenge 2: send int signal to the fg process group
+    //     kill(-pid, sig);
+    //     deletejob(jobs, pid);
+    //     printf("Job [%d] (%d) terminated by signal %d\n", jid, pid, sig);
+    // }
+    // sigprocmask(SIG_SETMASK, &prev_all, NULL);
+    // errno = olderrno;
+
+    // if (verbose)
+    //     printf("sigint_handler: exiting\n");
+
+    /*  Challenge 4: do not handle SIGINT in parent process,
+     *  instead we should forward it to child fg group process,
+     *  then handle them in sigchld_handler.
+     */
+
+    if (verbose)
+        printf("sigint_handler: entering\n");
+
+    int olderrno = errno;
+    sigset_t mask_all, prev_all;
+    sigfillset(&mask_all);
+    sigprocmask(SIG_BLOCK, &mask_all, &prev_all);
+
     pid_t pid = fgpid(jobs);
-    if(pid){
-        kill(pid, SIGINT);
-        printf("Job [%d] (%d) terminated by signal %d\n", pid2jid(pid), pid, sig);
-    }
-    return;
+    if (pid)
+        kill(-pid, SIGINT);
+
+    sigprocmask(SIG_SETMASK, &prev_all, NULL);
+    errno = olderrno;
+
+    if (verbose)
+        printf("sigint_handler: exiting\n");
 }
 
 /*
@@ -383,7 +535,38 @@ void sigint_handler(int sig)
  */
 void sigtstp_handler(int sig)
 {
-    return;
+    /*  Challenge 4: same as sigint_handler
+     *  just forward it to child fg process group
+     */
+
+    if (verbose)
+        printf("sigtstp_handler: entering\n");
+
+    int olderrno = errno;
+    sigset_t mask_all, prev_all;
+    sigfillset(&mask_all);
+    sigprocmask(SIG_BLOCK, &mask_all, &prev_all);
+    pid_t pid = fgpid(jobs);
+    if (pid)
+    {
+        /*  Challege 2: send tstp signal to the fg process group
+         *  i.e. remember to use -pid instead of pid
+         */
+        kill(-pid, sig);
+        // commented by challenge 4
+        // int jid = pid2jid(pid);
+        // struct job_t *job = getjobpid(jobs, pid);
+        // if (job)
+        //     job->state = ST;
+        // else
+        //     printf("No job has pid %d in sigtstp_handler", pid);
+        // printf("Job [%d] (%d) stopped by signal %d\n", jid, pid, sig);
+    }
+    sigprocmask(SIG_SETMASK, &prev_all, NULL);
+    errno = olderrno;
+
+    if (verbose)
+        printf("sigtstp_handler: exiting\n");
 }
 
 /*********************
