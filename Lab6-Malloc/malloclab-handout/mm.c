@@ -24,11 +24,11 @@
  ********************************************************/
 team_t team = {
     /* Team name */
-    "ateam",
+    "GEL-Lyte V",
     /* First member's full name */
-    "Harry Bovik",
+    "Erised",
     /* First member's email address */
-    "bovik@cs.cmu.edu",
+    "506933131@qq.com",
     /* Second member's full name (leave blank if none) */
     "",
     /* Second member's email address (leave blank if none) */
@@ -94,17 +94,3 @@ void *mm_realloc(void *ptr, size_t size)
     mm_free(oldptr);
     return newptr;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
