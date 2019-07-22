@@ -39,12 +39,10 @@ team_t team = {
 #define WSIZE 4             /* word and header/footer size (bytes) */
 #define DSIZE 8             /* double word size (bytes) */
 #define CHUNKSIZE (1 << 12) /* extend heap by this amount (bytes) */
+#define HEAPCHECK 1         /* heap check option */
 
 /* rounds up to the nearest multiple of ALIGNMENT */
 #define ALIGN(size) (((size) + (DSIZE - 1)) / DSIZE)
-
-/* sizeof(size_t) rounds up to alignment (8 in 64-bit machine) */
-#define SIZE_T_SIZE (ALIGN(sizeof(size_t)))
 
 /* Max macro function */
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
@@ -69,7 +67,7 @@ team_t team = {
 #define PREV_BLKP(bp) ((char *)(bp)-GET_SIZE((char *)(bp)-DSIZE))
 
 /* static pointer that points to prologue header */
-static char *heap_listp;
+static char *heap_listp = NULL;
 
 /* static functions */
 static void *extend_heap(size_t words);
@@ -161,6 +159,9 @@ static void *coalesce(void *bp)
  */
 void *mm_malloc(size_t size)
 {
+    if (!mm_check())
+        exit(0);
+
     size_t asize;      /* adjusted block size (in bytes) */
     size_t extendsize; /* amount to extend heap if no fit */
     char *bp;
@@ -236,6 +237,9 @@ static void place(void *bp, size_t asize)
  */
 void mm_free(void *bp)
 {
+    if (!mm_check())
+        exit(0);
+
     size_t size = GET_SIZE(HDRP(bp));
     PUT(HDRP(bp), PACK(size, 0));
     PUT(FTRP(bp), PACK(size, 0));
@@ -247,6 +251,9 @@ void mm_free(void *bp)
  */
 void *mm_realloc(void *ptr, size_t size)
 {
+    if (!mm_check())
+        exit(0);
+
     char *bp = ptr;
     char *oldbp;
     size_t oldsize = GET_SIZE(HDRP(bp));
@@ -306,4 +313,68 @@ void *mm_realloc(void *ptr, size_t size)
     memcpy(bp, oldbp, size);
     mm_free(oldbp);
     return bp;
+}
+
+/*
+ * mm_check - check heap consistency
+ *          - return -1 for uninitialized heap, 1 for consistent, 0 for error
+ */
+int mm_check(void)
+{
+    char *bp;
+    size_t heapsize = 0;
+
+    /* heap no need to check or has not been initialized */
+    if (!HEAPCHECK || heap_listp == NULL || heap_listp == (void *)-1)
+        return -1;
+
+    /* check first 3 words */
+    bp = ((char *)heap_listp) - 2 * WSIZE;
+    if (GET(bp) != 0 || GET(bp + WSIZE) != PACK(DSIZE, 1) || GET(bp + 2 * WSIZE) != PACK(DSIZE, 1))
+    {
+        fprintf(stderr, "Heap check error: first 3 words not consistent!\n");
+        return 0;
+    }
+    heapsize += 3 * WSIZE;
+
+    /* check epilogue word */
+    bp = ((char *)mem_heap_hi()) + 1 - WSIZE;
+    if (GET(bp) != PACK(0, 1))
+    {
+        fprintf(stderr, "Heap check error: last word not consistent!\n");
+        return 0;
+    }
+    heapsize += WSIZE;
+
+    /* loop through the implicit list to check consistency */
+    bp = ((char *)heap_listp) + 2 * WSIZE; /* point to first block */
+    while (GET(HDRP(bp)) != PACK(0, 1))
+    {
+        /* check consistency of head and foot */
+        if (GET(HDRP(bp)) != GET(FTRP(bp)))
+        {
+            fprintf(stderr, "Heap check error: block's head and foot not consistent!\n");
+            return 0;
+        }
+
+        /* check coalescing */
+        if (!GET_ALLOC(HDRP(bp)))
+            if (!GET_ALLOC(FTRP(PREV_BLKP(bp))) || !GET_ALLOC(HDRP(NEXT_BLKP(bp))))
+            {
+                fprintf(stderr, "Heap check error: two contiguous free blocks!\n");
+                return 0;
+            }
+
+        heapsize += GET_SIZE(HDRP(bp));
+        bp = NEXT_BLKP(bp);
+    }
+
+    /* check heap size */
+    if (heapsize != mem_heapsize())
+    {
+        fprintf(stderr, "Heap check error: heap size not consistent!\n");
+        return 0;
+    }
+
+    return 1;
 }
