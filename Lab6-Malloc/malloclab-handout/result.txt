@@ -1,0 +1,65 @@
+traces/amptjp-bal.rep
+Team Name:GEL-Lyte V
+Member 1 :Erised:506933131@qq.com
+Perf index = 59 (util) + 40 (thru) = 99/100
+
+traces/binary2-bal.rep
+Team Name:GEL-Lyte V
+Member 1 :Erised:506933131@qq.com
+Perf index = 31 (util) + 11 (thru) = 42/100
+
+traces/binary-bal.rep
+Team Name:GEL-Lyte V
+Member 1 :Erised:506933131@qq.com
+Perf index = 33 (util) + 15 (thru) = 48/100
+
+traces/cccp-bal.rep
+Team Name:GEL-Lyte V
+Member 1 :Erised:506933131@qq.com
+Perf index = 60 (util) + 40 (thru) = 100/100
+
+traces/coalescing-bal.rep
+Team Name:GEL-Lyte V
+Member 1 :Erised:506933131@qq.com
+Perf index = 40 (util) + 40 (thru) = 80/100
+
+traces/cp-decl-bal.rep
+Team Name:GEL-Lyte V
+Member 1 :Erised:506933131@qq.com
+Perf index = 59 (util) + 40 (thru) = 99/100
+
+traces/expr-bal.rep
+Team Name:GEL-Lyte V
+Member 1 :Erised:506933131@qq.com
+Perf index = 60 (util) + 40 (thru) = 100/100
+
+traces/random2-bal.rep
+Team Name:GEL-Lyte V
+Member 1 :Erised:506933131@qq.com
+Perf index = 55 (util) + 40 (thru) = 95/100
+
+traces/random-bal.rep
+Team Name:GEL-Lyte V
+Member 1 :Erised:506933131@qq.com
+Perf index = 55 (util) + 40 (thru) = 95/100
+
+traces/realloc2-bal.rep
+Team Name:GEL-Lyte V
+Member 1 :Erised:506933131@qq.com
+Perf index = 27 (util) + 40 (thru) = 67/100
+
+traces/realloc-bal.rep
+Team Name:GEL-Lyte V
+Member 1 :Erised:506933131@qq.com
+Perf index = 26 (util) + 40 (thru) = 66/100
+
+traces/short1.rep
+Team Name:GEL-Lyte V
+Member 1 :Erised:506933131@qq.com
+Perf index = 40 (util) + 40 (thru) = 80/100
+
+traces/short2.rep
+Team Name:GEL-Lyte V
+Member 1 :Erised:506933131@qq.com
+Perf index = 54 (util) + 40 (thru) = 94/100
+
