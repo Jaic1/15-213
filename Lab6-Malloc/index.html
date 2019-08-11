@@ -1,0 +1,200 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
+<html>
+  <head>
+    <title>Plots for Malloc-2.7.0</title>
+  </head>
+
+  <body bgcolor="white">
+    <h1>Plots for Malloc-2.7.0</h1>
+
+    <h2>Time traces</h2>
+
+    These plots show the amount of memory allocated by the program,
+    and amount reserved on system (the total number of bytes acquired
+    via sbrk and mmap -- i.e., the sytem level "footprints") for
+    traces of various programs running malloc-2.7.0 under default
+    settings.  (To reduce bulk a little bit, these plots contain a
+    point for every 16th malloc/free/realloc/etc.)  The difference
+    between Allocated and Reserved memory is one (of many) ways to
+    look at fragmentation.  While useful, it is a course-grained
+    measure, since by default, memory is reserved in page-size units
+    (usually 4K or 8K), and is only given back to the system when at
+    least 128K contiguous topmost or mapped bytes are free.  Most of
+    these are traces of interactive programs (browsers, X-window
+    sessions, etc). The number of operations listed is the total
+    number malloc-based calls (malloc, free, realloc, etc).
+    
+    <p>
+
+
+
+      Mozilla, approx version 0.8. 12486613 operations
+      <p><IMG src="mozilla.14841.png"><p>
+      
+      Netscape version 3.x. 510825 operations
+      <p><IMG src="netscape.970520.png"><p>
+      
+      An X-windows session. 380647 operations
+      <p><IMG src="X.1196.png"><p>
+      
+      An X-windows session. 438656 operations
+      <p><IMG src="X.1296.png"><p>
+      
+      An X-windows session. 466050  operations
+      <p><IMG src="XF86.1296.png"><p>
+      
+      An X-windows session. 929013 operations
+      <p><IMG src="XF86_S3.970519a.png"><p>
+      
+      An X-windows session.  255063 operations
+      <p><IMG src="XF86_S3.970519b.png"><p>
+
+      Roboop (a robotics simulator). 1829022 operations
+      <p><IMG src="roboop.28156.png"><p>
+      
+      StarOffice writer version 3.x. 915638 operations
+      <p><IMG src="swriter.970501.png"><p>
+
+      Match3d (an image manipulation program). 254447 operations
+      <p><IMG src="match3d-1.1.970905.png"><p>
+      
+      xpdf (pdf viewer). 1457687 operations
+      <p><IMG src="xpdf.19561.png"><p>
+      
+      xpdf (pdf viewer). 755653 operations
+      <p><IMG src="xpdf.19602.png"><p>
+      
+      xpdf (pdf viewer). 618901 operations
+      <p><IMG src="xpdf.9253.png"><p>
+
+      adolc (math differentiation program) 1417 operations
+      <p><IMG src="adolc.10004.png"><p>
+      
+      cccc (code counter program). 254928 operations
+      <p><IMG src="cccc.9262.png"><p>
+      
+      cccc (code counter program). 748949 operations
+      <p><IMG src="cccc.9294.png"><p>
+      
+      <h2>Size distributions - 1</h2>
+
+    These histograms show the numbers of allocations across
+    size classes. These are allocated sizes (reflecting bookkeeping
+    and alignment padding), not request sizes.<p>
+
+
+      Mozilla, approx version 0.8. 12486613 operations
+      <p><IMG src="dmozilla.14841.png"><p>
+      
+      Netscape version 3.x. 510825 operations
+      <p><IMG src="dnetscape.970520.png"><p>
+      
+      An X-windows session. 380647 operations
+      <p><IMG src="dX.1196.png"><p>
+      
+      An X-windows session. 438656 operations
+      <p><IMG src="dX.1296.png"><p>
+      
+      An X-windows session. 466050  operations
+      <p><IMG src="dXF86.1296.png"><p>
+      
+      An X-windows session. 929013 operations
+      <p><IMG src="dXF86_S3.970519a.png"><p>
+      
+      An X-windows session.  255063 operations
+      <p><IMG src="dXF86_S3.970519b.png"><p>
+
+      Roboop (a robotics simulator). 1829022 operations
+      <p><IMG src="droboop.28156.png"><p>
+      
+      StarOffice writer version 3.x. 915638 operations
+      <p><IMG src="dswriter3.970501.png"><p>
+
+      Match3d (an image manipulation program). 254447 operations
+      <p><IMG src="dmatch3d-1.1.970905.png"><p>
+      
+      xpdf (pdf viewer). 1457687 operations
+      <p><IMG src="dxpdf.19561.png"><p>
+      
+      xpdf (pdf viewer). 755653 operations
+      <p><IMG src="dxpdf.19602.png"><p>
+      
+      xpdf (pdf viewer). 618901 operations
+      <p><IMG src="dxpdf.9253.png"><p>
+
+      adolc (math differentiation program) 1417 operations
+      <p><IMG src="dadolc.10004.png"><p>
+      
+      cccc (code counter program). 254928 operations
+      <p><IMG src="dcccc.9262.png"><p>
+      
+      cccc (code counter program). 748949 operations
+      <p><IMG src="dcccc.9294.png"><p>
+
+
+      <h2>Size distributions - 2</h2>
+
+    These histograms show the proportions of allocations across
+    size classes using a log scale, which makes it easier to
+    see frequencies for less-common sizes.<p>
+
+
+
+      Mozilla, approx version 0.8. 12486613 operations
+      <p><IMG src="lmozilla.14841.png"><p>
+      
+      Netscape version 3.x. 510825 operations
+      <p><IMG src="lnetscape.970520.png"><p>
+      
+      An X-windows session. 380647 operations
+      <p><IMG src="lX.1196.png"><p>
+      
+      An X-windows session. 438656 operations
+      <p><IMG src="lX.1296.png"><p>
+      
+      An X-windows session. 466050  operations
+      <p><IMG src="lXF86.1296.png"><p>
+      
+      An X-windows session. 929013 operations
+      <p><IMG src="lXF86_S3.970519a.png"><p>
+      
+      An X-windows session.  255063 operations
+      <p><IMG src="lXF86_S3.970519b.png"><p>
+
+      Roboop (a robotics simulator). 1829022 operations
+      <p><IMG src="lroboop.28156.png"><p>
+      
+      StarOffice writer version 3.x. 915638 operations
+      <p><IMG src="lswriter3.970501.png"><p>
+
+      Match3d (an image manipulation program). 254447 operations
+      <p><IMG src="lmatch3d-1.1.970905.png"><p>
+      
+      xpdf (pdf viewer). 1457687 operations
+      <p><IMG src="lxpdf.19561.png"><p>
+      
+      xpdf (pdf viewer). 755653 operations
+      <p><IMG src="lxpdf.19602.png"><p>
+      
+      xpdf (pdf viewer). 618901 operations
+      <p><IMG src="lxpdf.9253.png"><p>
+
+      adolc (math differentiation program) 1417 operations
+      <p><IMG src="ladolc.10004.png"><p>
+      
+      cccc (code counter program). 254928 operations
+      <p><IMG src="lcccc.9262.png"><p>
+      
+      cccc (code counter program). 748949 operations
+      <p><IMG src="lcccc.9294.png"><p>
+
+
+
+    <hr>
+    <address><A HREF="http://gee.cs.oswego.edu/dl">Doug Lea</A></address>
+<!-- Created: Sat Mar 17 09:13:44 EST 2001 -->
+<!-- hhmts start -->
+Last modified: Sun Mar 18 09:22:30 EST 2001
+<!-- hhmts end -->
+  </body>
+</html>
