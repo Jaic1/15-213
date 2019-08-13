@@ -12,6 +12,9 @@
 
 #define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
 
+/* signal handler function*/
+void sigchld_handler(int sig);
+
 void doit(int fd);
 void read_requesthdrs(rio_t *rp, char *range);
 int parse_uri(char *uri, char *filetype, char *filename, char *cgiargs);
@@ -35,6 +38,9 @@ int main(int argc, char **argv)
         fprintf(stderr, "usage: %s <port>\n", argv[0]);
         exit(1);
     }
+
+    /* register signal handler */
+    Signal(SIGCHLD, sigchld_handler);
 
     listenfd = Open_listenfd(argv[1]);
     while (1)
@@ -288,8 +294,9 @@ void serve_dynamic(int fd, char *filename, char *cgiargs)
 
     /* Return first part of HTTP response */
     sprintf(buf, "HTTP/1.0 200 OK\r\n");
-    Rio_writen(fd, buf, strlen(buf));
-    sprintf(buf, "Server: Tiny Web Server\r\n");
+    sprintf(buf, "%sServer: Tiny Web Server\r\n", buf);
+    printf("Response headers:\n");
+    printf("%s(...Left by cgi program)\n\n", buf);
     Rio_writen(fd, buf, strlen(buf));
 
     if (Fork() == 0)
@@ -299,7 +306,6 @@ void serve_dynamic(int fd, char *filename, char *cgiargs)
         Dup2(fd, STDOUT_FILENO);              /* Redirect stdout to client */
         Execve(filename, emptylist, environ); /* Run CGI program */
     }
-    Wait(NULL); /* Parent waits for and reaps child */
 }
 /* $end serve_dynamic */
 
@@ -332,3 +338,17 @@ void clienterror(int fd, char *cause, char *errnum,
     Rio_writen(fd, body, strlen(body));
 }
 /* $end clienterror */
+
+/*
+ * sigchld_handler - reap child process
+ */
+void sigchld_handler(int sig)
+{
+    int olderrno = errno;
+
+    while(waitpid(-1, NULL, 0) > 0)
+        Sio_puts("sigchld_handler reaped child\n");
+    if(errno != ECHILD)
+        Sio_error("waitpid error");
+    errno = olderrno;
+}
