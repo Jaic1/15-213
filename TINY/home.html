@@ -3,8 +3,22 @@
 <body> 
 <img align="middle" src="godzilla.gif">
 Dave O'Hallaron
-<div>adding two number</div>
+<div>adding two number (GET)</div>
 <form action="/cgi-bin/adder" method="GET">
+    <div>
+        <label>Number 1: </label>
+        <input name="n1">
+    </div>
+    <div>
+        <label>Number 2: </label>
+        <input name="n2">
+    </div>
+    <div>
+        <button type="submit">add</button>
+    </div>
+</form>
+<div>adding two number (POST)</div>
+<form action="/cgi-bin/adder" method="POST">
     <div>
         <label>Number 1: </label>
         <input name="n1">

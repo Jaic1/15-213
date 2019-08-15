@@ -16,12 +16,12 @@
 void sigchld_handler(int sig);
 
 void doit(int fd);
-void read_requesthdrs(rio_t *rp, char *range);
+void read_requesthdrs(rio_t *rp, char *range, char *content_type, int *content_length_ptr);
 int parse_uri(char *uri, char *filetype, char *filename, char *cgiargs);
-void serve_static(int fd, char *filetype, char *filename, int filesize);
+void serve_static(int fd, char *filetype, char *filename, int is_head);
 void get_filetype(char *filename, char *filetype);
-void serve_mp4(int fd, char *filename, int filezie, char *range);
-void serve_dynamic(int fd, char *filename, char *cgiargs);
+void serve_mp4(int fd, char *filename, char *range, int is_head);
+void serve_dynamic(int fd, char *filename, char *cgiargs, int is_head);
 void clienterror(int fd, char *cause, char *errnum,
                  char *shortmsg, char *longmsg);
 
@@ -62,10 +62,11 @@ int main(int argc, char **argv)
 /* $begin doit */
 void doit(int fd)
 {
-    int servtype;
-    struct stat sbuf;
+    int servtype, is_head;
     char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE];
-    char filetype[MAXLINE], filename[MAXLINE], cgiargs[MAXLINE], range[MAXLINE];
+    char filetype[MAXLINE], filename[MAXLINE], cgiargs[MAXLINE];
+    char range[MAXLINE], content_type[MAXLINE];
+    int content_length;
     rio_t rio;
 
     /* Read request line and headers */
@@ -74,51 +75,53 @@ void doit(int fd)
         return;
     printf("%s", buf);
     sscanf(buf, "%s %s %s", method, uri, version);
-    if (strcasecmp(method, "GET"))
+    read_requesthdrs(&rio, range, content_type, &content_length);
+
+    /* determine request method */
+    is_head = 0;
+    if (!strcasecmp(method, "GET"))
+        servtype = parse_uri(uri, filetype, filename, cgiargs);
+    else if (!strcasecmp(method, "HEAD"))
+    {
+        is_head = 1;
+        servtype = parse_uri(uri, filetype, filename, cgiargs);
+    }
+    else if (!strcasecmp(method, "POST"))
+    {
+        if (content_type[0] == '\0' || !strstr(content_type, "application/x-www-form-urlencoded"))
+        {
+            clienterror(fd, content_type, "415", "Unsupported Media Type",
+                        "Tiny does not support this content-type(or not specified) for post");
+            return;
+        }
+        strcpy(filename, ".");
+        strcat(filename, uri);
+        /* Rio_readlineb(&rio, cgiargs, MAXLINE);
+         * can not be used, because Chrome, for example, 
+         * will only send n1=15&n2=23 but without \r\n or EOF
+         * so we should pass in the Content-Length param
+         */
+        Rio_readlineb(&rio, cgiargs, MIN(content_length+1, MAXLINE));
+        servtype = SERVICE_DYNAMIC;
+    }
+    else
     {
         clienterror(fd, method, "501", "Not Implemented",
                     "Tiny does not implement this method");
         return;
     }
-    read_requesthdrs(&rio, range);
 
-    /* Parse URI from GET request */
-    servtype = parse_uri(uri, filetype, filename, cgiargs);
-    if (stat(filename, &sbuf) < 0)
-    {
-        clienterror(fd, filename, "404", "Not found",
-                    "Tiny couldn't find this file");
-        return;
-    }
-
+    /* serve content */
     switch (servtype)
     {
     case SERVICE_STATIC:
-        if (!(S_ISREG(sbuf.st_mode)) || !(S_IRUSR & sbuf.st_mode))
-        {
-            clienterror(fd, filename, "403", "Forbidden",
-                        "Tiny couldn't read the file");
-            return;
-        }
-        serve_static(fd, filetype, filename, sbuf.st_size);
+        serve_static(fd, filetype, filename, is_head);
         break;
     case SERVICE_DYNAMIC:
-        if (!(S_ISREG(sbuf.st_mode)) || !(S_IXUSR & sbuf.st_mode))
-        {
-            clienterror(fd, filename, "403", "Forbidden",
-                        "Tiny couldn't run the CGI program");
-            return;
-        }
-        serve_dynamic(fd, filename, cgiargs);
+        serve_dynamic(fd, filename, cgiargs, is_head);
         break;
     case SERVICE_MP4:
-        if (!(S_ISREG(sbuf.st_mode)) || !(S_IRUSR & sbuf.st_mode))
-        {
-            clienterror(fd, filename, "403", "Forbidden",
-                        "Tiny couldn't read the file");
-            return;
-        }
-        serve_mp4(fd, filename, sbuf.st_size, range);
+        serve_mp4(fd, filename, range, is_head);
         break;
     default:
         clienterror(fd, filename, "400", "Bad Request",
@@ -131,10 +134,12 @@ void doit(int fd)
  * read_requesthdrs - read HTTP request headers
  */
 /* $begin read_requesthdrs */
-void read_requesthdrs(rio_t *rp, char *range)
+void read_requesthdrs(rio_t *rp, char *range, char *content_type, int *content_length_ptr)
 {
     char buf[MAXLINE];
     range[0] = '\0';
+    content_type[0] = '\0';
+    *content_length_ptr = 0;
 
     do
     {
@@ -142,6 +147,10 @@ void read_requesthdrs(rio_t *rp, char *range)
         printf("%s", buf);
         if (strstr(buf, "Range"))
             strcpy(range, buf);
+        else if (strstr(buf, "Content-Type"))
+            strcpy(content_type, buf);
+        else if(strstr(buf, "Content-Length"))
+            sscanf(buf, "Content-Length: %d", content_length_ptr);
     } while (strcmp(buf, "\r\n"));
 
     return;
@@ -189,10 +198,26 @@ int parse_uri(char *uri, char *filetype, char *filename, char *cgiargs)
  * serve_static - copy a file back to the client 
  */
 /* $begin serve_static */
-void serve_static(int fd, char *filetype, char *filename, int filesize)
+void serve_static(int fd, char *filetype, char *filename, int is_head)
 {
-    int srcfd;
+    int srcfd, filesize;
+    struct stat sbuf;
     char *srcp, buf[MAXBUF];
+
+    /* check file stat */
+    if (stat(filename, &sbuf) < 0)
+    {
+        clienterror(fd, filename, "404", "Not found",
+                    "Tiny couldn't find this file");
+        return;
+    }
+    if (!(S_ISREG(sbuf.st_mode)) || !(S_IRUSR & sbuf.st_mode))
+    {
+        clienterror(fd, filename, "403", "Forbidden",
+                    "Tiny couldn't read the file");
+        return;
+    }
+    filesize = sbuf.st_size;
 
     /* Send response headers to client */
     sprintf(buf, "HTTP/1.0 200 OK\r\n");
@@ -205,6 +230,8 @@ void serve_static(int fd, char *filetype, char *filename, int filesize)
     printf("%s", buf);
 
     /* Send response body to client */
+    if (is_head)
+        return;
     srcfd = Open(filename, O_RDONLY, 0);
     srcp = Mmap(0, filesize, PROT_READ, MAP_PRIVATE, srcfd, 0);
     Close(srcfd);
@@ -239,18 +266,34 @@ void get_filetype(char *filename, char *filetype)
  *      but cannot be downloaded.
  */
 /* $begin serve_mp4 */
-void serve_mp4(int fd, char *filename, int filesize, char *range)
+void serve_mp4(int fd, char *filename, char *range, int is_head)
 {
-    int srcfd;
+    int srcfd, filesize;
     int start, end, length;
-    int page = sysconf(_SC_PAGE_SIZE);
     int page_start;
+    int page = sysconf(_SC_PAGE_SIZE);
+    struct stat sbuf;
     char *srcp, buf[MAXLINE];
+
+    /* check file stat */
+    if (stat(filename, &sbuf) < 0)
+    {
+        clienterror(fd, filename, "404", "Not found",
+                    "Tiny couldn't find this file");
+        return;
+    }
+    if (!(S_ISREG(sbuf.st_mode)) || !(S_IRUSR & sbuf.st_mode))
+    {
+        clienterror(fd, filename, "403", "Forbidden",
+                    "Tiny couldn't read the file");
+        return;
+    }
+    filesize = sbuf.st_size;
 
     if (range[0] != '\0')
     {
         if (sscanf(range, "Range: bytes=%d-%d", &start, &end) != 2)
-            end = MIN(filesize - 1, start + page * 20 - 1);
+            end = MIN(filesize - 1, start + page * 5 - 1);
         else
             end = MIN(filesize - 1, end);
         page_start = start / page;
@@ -268,6 +311,7 @@ void serve_mp4(int fd, char *filename, int filesize, char *range)
         return;
     }
 
+    /* Send response headers to client */
     sprintf(buf, "HTTP/1.1 206 Partial Content\r\n");
     sprintf(buf, "%sContent-Range: bytes %d-%d/%d\r\n",
             buf, start, end, filesize);
@@ -276,6 +320,9 @@ void serve_mp4(int fd, char *filename, int filesize, char *range)
     printf("%s", buf);
     Rio_writen(fd, buf, strlen(buf));
 
+    /* Send response body to client */
+    if (is_head)
+        return;
     srcfd = Open(filename, O_RDONLY, 0);
     srcp = Mmap(0, length, PROT_READ, MAP_PRIVATE, srcfd, page_start * page);
     Close(srcfd);
@@ -288,9 +335,24 @@ void serve_mp4(int fd, char *filename, int filesize, char *range)
  * serve_dynamic - run a CGI program on behalf of the client
  */
 /* $begin serve_dynamic */
-void serve_dynamic(int fd, char *filename, char *cgiargs)
+void serve_dynamic(int fd, char *filename, char *cgiargs, int is_head)
 {
+    struct stat sbuf;
     char buf[MAXLINE], *emptylist[] = {NULL};
+
+    /* check file stat */
+    if (stat(filename, &sbuf) < 0)
+    {
+        clienterror(fd, filename, "404", "Not found",
+                    "Tiny couldn't find this file");
+        return;
+    }
+    if (!(S_ISREG(sbuf.st_mode)) || !(S_IXUSR & sbuf.st_mode))
+    {
+        clienterror(fd, filename, "403", "Forbidden",
+                    "Tiny couldn't run the CGI program");
+        return;
+    }
 
     /* Return first part of HTTP response */
     sprintf(buf, "HTTP/1.0 200 OK\r\n");
@@ -303,6 +365,8 @@ void serve_dynamic(int fd, char *filename, char *cgiargs)
     { /* Child */
         /* Real server would set all CGI vars here */
         setenv("QUERY_STRING", cgiargs, 1);
+        if (is_head)
+            setenv("IS_HEAD", "HEAD", 1);
         Dup2(fd, STDOUT_FILENO);              /* Redirect stdout to client */
         Execve(filename, emptylist, environ); /* Run CGI program */
     }
@@ -346,9 +410,9 @@ void sigchld_handler(int sig)
 {
     int olderrno = errno;
 
-    while(waitpid(-1, NULL, 0) > 0)
+    while (waitpid(-1, NULL, 0) > 0)
         Sio_puts("sigchld_handler reaped child\n");
-    if(errno != ECHILD)
+    if (errno != ECHILD)
         Sio_error("waitpid error");
     errno = olderrno;
 }

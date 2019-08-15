@@ -8,11 +8,16 @@ int main(void)
 {
     char *buf;
     char content[MAXLINE];
-    int n1 = 0, n2 = 0;
+    int n1 = 0, n2 = 0, is_head;
 
     /* Extract the two arguments */
     if ((buf = getenv("QUERY_STRING")) != NULL)
         sscanf(buf, "n1=%d&n2=%d", &n1, &n2);
+
+    /* Check if the method is HEAD */
+    is_head = 0;
+    if ((buf = getenv("IS_HEAD")) != NULL && !strcmp(buf, "HEAD"))
+        is_head = 1;
 
     /* Make the response body */
     sprintf(content, "Welcome to add.com: ");
@@ -25,7 +30,8 @@ int main(void)
     printf("Connection: close\r\n");
     printf("Content-length: %d\r\n", (int)strlen(content));
     printf("Content-type: text/html\r\n\r\n");
-    printf("%s", content);
+    if (!is_head)
+        printf("%s", content);
     fflush(stdout);
 
     exit(0);
