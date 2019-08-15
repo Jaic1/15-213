@@ -912,10 +912,20 @@ ssize_t Rio_readn(int fd, void *ptr, size_t nbytes)
     return n;
 }
 
-void Rio_writen(int fd, void *usrbuf, size_t n)
+ssize_t Rio_writen(int fd, void *usrbuf, size_t n)
 {
-    if (rio_writen(fd, usrbuf, n) != n)
-        unix_error("Rio_writen error");
+    ssize_t rc;
+
+    if ((rc = rio_writen(fd, usrbuf, n)) == n)
+        return rc;
+    else if (errno == EPIPE)
+    {
+        fprintf(stderr, "Rio_writen error: %s\n", strerror(EPIPE));
+        return -1;
+    }
+
+    unix_error("Rio_writen error");
+    return -1;  // control never reaches here
 }
 
 void Rio_readinitb(rio_t *rp, int fd)

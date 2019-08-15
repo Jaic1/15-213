@@ -4,11 +4,16 @@
 /* $begin adder */
 #include "csapp.h"
 
+void sigpipe_handler(int sig);
+
 int main(void)
 {
     char *buf;
     char content[MAXLINE];
     int n1 = 0, n2 = 0, is_head;
+
+    /* register signal handler */
+    Signal(SIGPIPE, sigpipe_handler);
 
     /* Extract the two arguments */
     if ((buf = getenv("QUERY_STRING")) != NULL)
@@ -37,3 +42,12 @@ int main(void)
     exit(0);
 }
 /* $end adder */
+
+/*
+ * sigpipe_handler - forward SIGPIPE to proc group
+ */
+void sigpipe_handler(int sig)
+{
+    Sio_puts("Connection closed by foreign host.\n");
+    exit(0);
+}

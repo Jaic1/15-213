@@ -14,6 +14,7 @@
 
 /* signal handler function*/
 void sigchld_handler(int sig);
+void sigpipe_handler(int sig);
 
 void doit(int fd);
 void read_requesthdrs(rio_t *rp, char *range, char *content_type, int *content_length_ptr);
@@ -41,6 +42,7 @@ int main(int argc, char **argv)
 
     /* register signal handler */
     Signal(SIGCHLD, sigchld_handler);
+    Signal(SIGPIPE, sigpipe_handler);
 
     listenfd = Open_listenfd(argv[1]);
     while (1)
@@ -101,7 +103,7 @@ void doit(int fd)
          * will only send n1=15&n2=23 but without \r\n or EOF
          * so we should pass in the Content-Length param
          */
-        Rio_readlineb(&rio, cgiargs, MIN(content_length+1, MAXLINE));
+        Rio_readlineb(&rio, cgiargs, MIN(content_length + 1, MAXLINE));
         servtype = SERVICE_DYNAMIC;
     }
     else
@@ -143,13 +145,19 @@ void read_requesthdrs(rio_t *rp, char *range, char *content_type, int *content_l
 
     do
     {
+        // TODO
+        // Rio_readlineb use Unix read under the hood
+        // so it is blocking
+        // in the case a client send GET / HTTP/1.0\r\n
+        // and then terminate
+        // the result is the server enters a loop here
         Rio_readlineb(rp, buf, MAXLINE);
         printf("%s", buf);
         if (strstr(buf, "Range"))
             strcpy(range, buf);
         else if (strstr(buf, "Content-Type"))
             strcpy(content_type, buf);
-        else if(strstr(buf, "Content-Length"))
+        else if (strstr(buf, "Content-Length"))
             sscanf(buf, "Content-Length: %d", content_length_ptr);
     } while (strcmp(buf, "\r\n"));
 
@@ -225,9 +233,10 @@ void serve_static(int fd, char *filetype, char *filename, int is_head)
     sprintf(buf, "%sConnection: close\r\n", buf);
     sprintf(buf, "%sContent-length: %d\r\n", buf, filesize);
     sprintf(buf, "%sContent-type: %s\r\n\r\n", buf, filetype);
-    Rio_writen(fd, buf, strlen(buf));
     printf("Response headers:\n");
     printf("%s", buf);
+    if (Rio_writen(fd, buf, strlen(buf)) < 0)
+        return;
 
     /* Send response body to client */
     if (is_head)
@@ -318,7 +327,8 @@ void serve_mp4(int fd, char *filename, char *range, int is_head)
     sprintf(buf, "%sContent-Length: %d\r\n\r\n", buf, end + 1 - start);
     printf("Response headers:\n");
     printf("%s", buf);
-    Rio_writen(fd, buf, strlen(buf));
+    if (Rio_writen(fd, buf, strlen(buf)) < 0)
+        return;
 
     /* Send response body to client */
     if (is_head)
@@ -359,7 +369,8 @@ void serve_dynamic(int fd, char *filename, char *cgiargs, int is_head)
     sprintf(buf, "%sServer: Tiny Web Server\r\n", buf);
     printf("Response headers:\n");
     printf("%s(...Left by cgi program)\n\n", buf);
-    Rio_writen(fd, buf, strlen(buf));
+    if (Rio_writen(fd, buf, strlen(buf)) < 0)
+        return;
 
     if (Fork() == 0)
     { /* Child */
@@ -394,11 +405,10 @@ void clienterror(int fd, char *cause, char *errnum,
 
     /* Print the HTTP response */
     sprintf(buf, "HTTP/1.0 %s %s\r\n", errnum, shortmsg);
-    Rio_writen(fd, buf, strlen(buf));
-    sprintf(buf, "Content-type: text/html\r\n");
-    Rio_writen(fd, buf, strlen(buf));
-    sprintf(buf, "Content-length: %d\r\n\r\n", (int)strlen(body));
-    Rio_writen(fd, buf, strlen(buf));
+    sprintf(buf, "%sContent-type: text/html\r\n", buf);
+    sprintf(buf, "%sContent-length: %d\r\n\r\n", buf, (int)strlen(body));
+    if (Rio_writen(fd, buf, strlen(buf)) < 0)
+        return;
     Rio_writen(fd, body, strlen(body));
 }
 /* $end clienterror */
@@ -415,4 +425,12 @@ void sigchld_handler(int sig)
     if (errno != ECHILD)
         Sio_error("waitpid error");
     errno = olderrno;
+}
+
+/*
+ * sigpipe_handler - print error about SIGPIPE
+ */
+void sigpipe_handler(int sig)
+{
+    Sio_puts("Connection closed by foreign host.\n");
 }
